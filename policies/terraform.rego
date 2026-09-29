@@ -35,3 +35,12 @@ deny contains violation if {
         "message": "El servidor debe tener cifrado habilitado"
     }
 }
+
+# ============================================================
+# POLICY GATE
+# Permitir continuar solo si no existen violaciones
+# ============================================================
+
+allow if {
+    count(deny) == 0
+}

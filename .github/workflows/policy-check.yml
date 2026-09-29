@@ -1,0 +1,72 @@
+name: Policy as Code - Terraform + OPA
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  policy-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Descargar el código del repositorio
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      # 2. Instalar Terraform
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.2
+
+      # 3. Inicializar Terraform
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      # 4. Validar la configuración Terraform
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      # 5. Generar el plan de Terraform
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan
+
+      # 6. Convertir el plan de Terraform a JSON
+      - name: Terraform Plan to JSON
+        working-directory: terraform
+        run: terraform show -json tfplan > tfplan.json
+
+      # 7. Instalar Open Policy Agent
+      - name: Instalar OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/v1.21.0/opa_linux_amd64_static
+          chmod +x opa
+          sudo mv opa /usr/local/bin/opa
+          opa version
+
+      # 8. Mostrar las violaciones encontradas por OPA
+      - name: Evaluar politicas con OPA
+        run: |
+          echo "Evaluando Terraform Plan con OPA..."
+
+          opa eval \
+            --format pretty \
+            --data ./policies/terraform.rego \
+            --input ./terraform/tfplan.json \
+            "data.terraform.security.deny"
+
+      # 9. Policy Gate
+      - name: Policy Gate
+        run: |
+          echo "Verificando Policy Gate..."
+
+          opa eval \
+            --fail \
+            --format pretty \
+            --data ./policies/terraform.rego \
+            --input ./terraform/tfplan.json \
+            "data.terraform.security.allow"
