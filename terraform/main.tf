@@ -28,7 +28,7 @@ variable "ssh_source" {
   type    = string
 
   # Configuración insegura intencional para la demostración
-  default = "0.0.0.0/0"
+  default = "10.0.0.0/24"
 }
 
 variable "encrypted" {
