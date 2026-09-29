@@ -1,0 +1,10 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+tfplan.json
+
+# Sistema / IDE
+.vscode/
+.DS_Store
