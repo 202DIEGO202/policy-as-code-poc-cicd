@@ -62,11 +62,43 @@ jobs:
       # 9. Policy Gate
       - name: Policy Gate
         run: |
-          echo "Verificando Policy Gate..."
+          echo "========================================"
+          echo "        POLICY AS CODE - RESULTADO"
+          echo "========================================"
+          echo ""
 
-          opa eval \
-            --fail \
-            --format pretty \
+          VIOLATIONS=$(opa eval \
+            --format raw \
             --data ./policies/terraform.rego \
             --input ./terraform/tfplan.json \
-            "data.terraform.security.allow"
+            "count(data.terraform.security.deny)")
+
+          if [ "$VIOLATIONS" -gt 0 ]; then
+            echo "❌ DESPLIEGUE BLOQUEADO"
+            echo ""
+            echo "Se encontraron $VIOLATIONS violaciones de seguridad:"
+            echo ""
+
+            opa eval \
+              --format pretty \
+              --data ./policies/terraform.rego \
+              --input ./terraform/tfplan.json \
+              "data.terraform.security.deny"
+
+            echo ""
+            echo "----------------------------------------"
+            echo "Resultado: POLICY GATE FAILED"
+            echo "La infraestructura NO puede continuar."
+            echo "----------------------------------------"
+
+            exit 1
+          else
+            echo "✅ POLÍTICAS CUMPLIDAS"
+            echo ""
+            echo "No se encontraron violaciones de seguridad."
+            echo ""
+            echo "----------------------------------------"
+            echo "Resultado: POLICY GATE PASSED"
+            echo "La infraestructura puede continuar."
+            echo "----------------------------------------"
+          fi
