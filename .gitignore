@@ -1,10 +1,29 @@
-# Terraform
+# ============================================================
+# TERRAFORM
+# ============================================================
+
+# Directorio local generado por terraform init
 .terraform/
+
+# Estados de Terraform
 *.tfstate
 *.tfstate.*
+
+# Plan binario generado localmente
 tfplan
+
+# Plan convertido a JSON para OPA
 tfplan.json
 
-# Sistema / IDE
+# Archivos de crash
+crash.log
+crash.*.log
+
+
+# ============================================================
+# EDITORES / SISTEMA OPERATIVO
+# ============================================================
+
 .vscode/
 .DS_Store
+Thumbs.db

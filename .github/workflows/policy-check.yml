@@ -1,4 +1,4 @@
-name: Policy as Code - Terraform + OPA
+name: Policy as Code - Terraform AWS + OPA
 
 on:
   push:
@@ -6,41 +6,88 @@ on:
       - main
 
 jobs:
+
   policy-check:
+
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Descargar el código del repositorio
+
+      # ======================================================
+      # 1. DESCARGAR REPOSITORIO
+      # ======================================================
+
       - name: Descargar repositorio
         uses: actions/checkout@v4
 
-      # 2. Instalar Terraform
+
+      # ======================================================
+      # 2. INSTALAR TERRAFORM
+      # ======================================================
+
       - name: Instalar Terraform
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.16.2
 
-      # 3. Inicializar Terraform
+
+      # ======================================================
+      # 3. TERRAFORM INIT
+      #
+      # Inicializa Terraform y descarga el provider AWS.
+      # NO crea infraestructura.
+      # ======================================================
+
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
 
-      # 4. Validar la configuración Terraform
+
+      # ======================================================
+      # 4. TERRAFORM VALIDATE
+      #
+      # Comprueba que el código Terraform sea válido.
+      # Que Terraform sea válido NO significa que cumpla
+      # las políticas organizacionales.
+      # ======================================================
+
       - name: Terraform Validate
         working-directory: terraform
         run: terraform validate
 
-      # 5. Generar el plan de Terraform
+
+      # ======================================================
+      # 5. TERRAFORM PLAN
+      #
+      # Genera el plan de infraestructura.
+      #
+      # IMPORTANTE:
+      # NO ejecutamos terraform apply.
+      #
+      # -refresh=false evita refrescar infraestructura remota
+      # para esta prueba de concepto.
+      # ======================================================
+
       - name: Terraform Plan
         working-directory: terraform
-        run: terraform plan -out=tfplan
+        run: terraform plan -refresh=false -out=tfplan
 
-      # 6. Convertir el plan de Terraform a JSON
+
+      # ======================================================
+      # 6. CONVERTIR TERRAFORM PLAN A JSON
+      #
+      # OPA evaluará este JSON.
+      # ======================================================
+
       - name: Terraform Plan to JSON
         working-directory: terraform
         run: terraform show -json tfplan > tfplan.json
 
-      # 7. Instalar Open Policy Agent
+
+      # ======================================================
+      # 7. INSTALAR OPEN POLICY AGENT
+      # ======================================================
+
       - name: Instalar OPA
         run: |
           curl -L -o opa https://openpolicyagent.org/downloads/v1.21.0/opa_linux_amd64_static
@@ -48,15 +95,26 @@ jobs:
           sudo mv opa /usr/local/bin/opa
           opa version
 
-      # 8. Evaluar políticas con OPA
+
+      # ======================================================
+      # 8. EVALUAR POLÍTICAS
+      #
+      # Mostramos:
+      #
+      # DENY    → violaciones bloqueantes
+      # WARNING → advertencias no bloqueantes
+      # ======================================================
+
       - name: Evaluar politicas con OPA
         run: |
+
           echo "========================================"
           echo "        EVALUACION DE POLITICAS"
           echo "========================================"
           echo ""
 
           echo "Evaluando violaciones bloqueantes (DENY)..."
+
           opa eval \
             --format pretty \
             --data ./policies/terraform.rego \
@@ -64,46 +122,75 @@ jobs:
             "data.terraform.security.deny"
 
           echo ""
+
           echo "Evaluando advertencias (WARNING)..."
+
           opa eval \
             --format pretty \
             --data ./policies/terraform.rego \
             --input ./terraform/tfplan.json \
             "data.terraform.security.warning"
 
-      # 9. Policy Gate
+
+      # ======================================================
+      # 9. POLICY GATE
+      #
+      # DENY > 0
+      #     → pipeline bloqueado
+      #
+      # DENY = 0 y WARNING > 0
+      #     → pipeline continúa con advertencias
+      #
+      # DENY = 0 y WARNING = 0
+      #     → pipeline aprobado
+      # ======================================================
+
       - name: Policy Gate
         run: |
+
           echo "========================================"
           echo "        POLICY AS CODE - RESULTADO"
           echo "========================================"
           echo ""
 
+
+          # --------------------------------------------------
           # Contar violaciones bloqueantes
+          # --------------------------------------------------
+
           VIOLATIONS=$(opa eval \
             --format raw \
             --data ./policies/terraform.rego \
             --input ./terraform/tfplan.json \
             "count(data.terraform.security.deny)")
 
+
+          # --------------------------------------------------
           # Contar advertencias
+          # --------------------------------------------------
+
           WARNINGS=$(opa eval \
             --format raw \
             --data ./policies/terraform.rego \
             --input ./terraform/tfplan.json \
             "count(data.terraform.security.warning)")
 
+
           echo "Violaciones bloqueantes: $VIOLATIONS"
           echo "Advertencias: $WARNINGS"
           echo ""
 
-          # ----------------------------------------------------
-          # CASO 1: Existen violaciones bloqueantes
-          # ----------------------------------------------------
+
+          # ==================================================
+          # CASO 1
+          # EXISTEN VIOLACIONES BLOQUEANTES
+          # ==================================================
+
           if [ "$VIOLATIONS" -gt 0 ]; then
 
             echo "❌ DESPLIEGUE BLOQUEADO"
             echo ""
+
             echo "Se encontraron $VIOLATIONS violaciones de seguridad:"
             echo ""
 
@@ -113,8 +200,11 @@ jobs:
               --input ./terraform/tfplan.json \
               "data.terraform.security.deny"
 
-            # Mostrar también las advertencias si existen
+
+            # Mostrar también warnings si existen
+
             if [ "$WARNINGS" -gt 0 ]; then
+
               echo ""
               echo "⚠️ ADVERTENCIAS:"
               echo ""
@@ -124,7 +214,9 @@ jobs:
                 --data ./policies/terraform.rego \
                 --input ./terraform/tfplan.json \
                 "data.terraform.security.warning"
+
             fi
+
 
             echo ""
             echo "----------------------------------------"
@@ -134,13 +226,17 @@ jobs:
 
             exit 1
 
-          # ----------------------------------------------------
-          # CASO 2: No hay DENY, pero existen WARNING
-          # ----------------------------------------------------
+
+          # ==================================================
+          # CASO 2
+          # SIN DENY, PERO CON WARNING
+          # ==================================================
+
           elif [ "$WARNINGS" -gt 0 ]; then
 
             echo "⚠️ POLÍTICAS CUMPLIDAS CON ADVERTENCIAS"
             echo ""
+
             echo "Se encontraron $WARNINGS advertencias:"
             echo ""
 
@@ -150,21 +246,27 @@ jobs:
               --input ./terraform/tfplan.json \
               "data.terraform.security.warning"
 
+
             echo ""
             echo "----------------------------------------"
             echo "Resultado: POLICY GATE PASSED WITH WARNINGS"
             echo "La infraestructura puede continuar."
             echo "----------------------------------------"
 
-          # ----------------------------------------------------
-          # CASO 3: No hay DENY ni WARNING
-          # ----------------------------------------------------
+
+          # ==================================================
+          # CASO 3
+          # SIN DENY Y SIN WARNING
+          # ==================================================
+
           else
 
             echo "✅ POLÍTICAS CUMPLIDAS"
             echo ""
+
             echo "No se encontraron violaciones ni advertencias."
             echo ""
+
             echo "----------------------------------------"
             echo "Resultado: POLICY GATE PASSED"
             echo "La infraestructura puede continuar."
