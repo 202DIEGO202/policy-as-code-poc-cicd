@@ -35,7 +35,7 @@ variable "encrypted" {
   type = bool
 
   # Configuración insegura intencional para la demostración
-  default = false
+  default = true
 }
 
 variable "owner" {
