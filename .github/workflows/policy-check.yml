@@ -48,16 +48,28 @@ jobs:
           sudo mv opa /usr/local/bin/opa
           opa version
 
-      # 8. Mostrar las violaciones encontradas por OPA
+      # 8. Evaluar políticas con OPA
       - name: Evaluar politicas con OPA
         run: |
-          echo "Evaluando Terraform Plan con OPA..."
+          echo "========================================"
+          echo "        EVALUACION DE POLITICAS"
+          echo "========================================"
+          echo ""
 
+          echo "Evaluando violaciones bloqueantes (DENY)..."
           opa eval \
             --format pretty \
             --data ./policies/terraform.rego \
             --input ./terraform/tfplan.json \
             "data.terraform.security.deny"
+
+          echo ""
+          echo "Evaluando advertencias (WARNING)..."
+          opa eval \
+            --format pretty \
+            --data ./policies/terraform.rego \
+            --input ./terraform/tfplan.json \
+            "data.terraform.security.warning"
 
       # 9. Policy Gate
       - name: Policy Gate
@@ -67,13 +79,29 @@ jobs:
           echo "========================================"
           echo ""
 
+          # Contar violaciones bloqueantes
           VIOLATIONS=$(opa eval \
             --format raw \
             --data ./policies/terraform.rego \
             --input ./terraform/tfplan.json \
             "count(data.terraform.security.deny)")
 
+          # Contar advertencias
+          WARNINGS=$(opa eval \
+            --format raw \
+            --data ./policies/terraform.rego \
+            --input ./terraform/tfplan.json \
+            "count(data.terraform.security.warning)")
+
+          echo "Violaciones bloqueantes: $VIOLATIONS"
+          echo "Advertencias: $WARNINGS"
+          echo ""
+
+          # ----------------------------------------------------
+          # CASO 1: Existen violaciones bloqueantes
+          # ----------------------------------------------------
           if [ "$VIOLATIONS" -gt 0 ]; then
+
             echo "❌ DESPLIEGUE BLOQUEADO"
             echo ""
             echo "Se encontraron $VIOLATIONS violaciones de seguridad:"
@@ -85,6 +113,19 @@ jobs:
               --input ./terraform/tfplan.json \
               "data.terraform.security.deny"
 
+            # Mostrar también las advertencias si existen
+            if [ "$WARNINGS" -gt 0 ]; then
+              echo ""
+              echo "⚠️ ADVERTENCIAS:"
+              echo ""
+
+              opa eval \
+                --format pretty \
+                --data ./policies/terraform.rego \
+                --input ./terraform/tfplan.json \
+                "data.terraform.security.warning"
+            fi
+
             echo ""
             echo "----------------------------------------"
             echo "Resultado: POLICY GATE FAILED"
@@ -92,13 +133,41 @@ jobs:
             echo "----------------------------------------"
 
             exit 1
+
+          # ----------------------------------------------------
+          # CASO 2: No hay DENY, pero existen WARNING
+          # ----------------------------------------------------
+          elif [ "$WARNINGS" -gt 0 ]; then
+
+            echo "⚠️ POLÍTICAS CUMPLIDAS CON ADVERTENCIAS"
+            echo ""
+            echo "Se encontraron $WARNINGS advertencias:"
+            echo ""
+
+            opa eval \
+              --format pretty \
+              --data ./policies/terraform.rego \
+              --input ./terraform/tfplan.json \
+              "data.terraform.security.warning"
+
+            echo ""
+            echo "----------------------------------------"
+            echo "Resultado: POLICY GATE PASSED WITH WARNINGS"
+            echo "La infraestructura puede continuar."
+            echo "----------------------------------------"
+
+          # ----------------------------------------------------
+          # CASO 3: No hay DENY ni WARNING
+          # ----------------------------------------------------
           else
+
             echo "✅ POLÍTICAS CUMPLIDAS"
             echo ""
-            echo "No se encontraron violaciones de seguridad."
+            echo "No se encontraron violaciones ni advertencias."
             echo ""
             echo "----------------------------------------"
             echo "Resultado: POLICY GATE PASSED"
             echo "La infraestructura puede continuar."
             echo "----------------------------------------"
+
           fi
