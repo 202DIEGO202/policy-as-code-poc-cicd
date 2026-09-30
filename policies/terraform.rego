@@ -2,11 +2,11 @@ package terraform.security
 
 import rego.v1
 
-# Obtenemos la configuración propuesta por Terraform
 server := input.planned_values.outputs.server_configuration.value
 
+
 # ============================================================
-# SEC-INF-001
+# SEC-INF-001 - BLOQUEANTE
 # No permitir SSH abierto a todo Internet
 # ============================================================
 
@@ -21,8 +21,9 @@ deny contains violation if {
     }
 }
 
+
 # ============================================================
-# SEC-INF-002
+# SEC-INF-002 - BLOQUEANTE
 # El cifrado debe estar habilitado
 # ============================================================
 
@@ -36,9 +37,26 @@ deny contains violation if {
     }
 }
 
+
+# ============================================================
+# SEC-INF-003 - ADVERTENCIA
+# Convención recomendada para nombre del servidor
+# ============================================================
+
+warning contains violation if {
+    not startswith(server.name, "Demo-")
+
+    violation := {
+        "id": "SEC-INF-003",
+        "severity": "MEDIUM",
+        "message": "El nombre del servidor debería comenzar con el prefijo corporativo 'Demo-'"
+    }
+}
+
+
 # ============================================================
 # POLICY GATE
-# Permitir continuar solo si no existen violaciones
+# Solo los DENY bloquean
 # ============================================================
 
 allow if {
