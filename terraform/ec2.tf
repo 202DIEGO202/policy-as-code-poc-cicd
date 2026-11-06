@@ -21,7 +21,7 @@ resource "aws_instance" "web" {
   # ----------------------------------------------------------
 
   root_block_device {
-    encrypted = false
+    encrypted = true
   }
 
 
